@@ -172,9 +172,9 @@
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-black text-amber-300 flex items-center space-x-1.5">
                             <i data-lucide="flame" class="w-4 h-4 text-amber-400 animate-bounce"></i>
-                            <span id="period-hot-title">최근 3달간 가장 많이 나온 번호 TOP 5</span>
+                            <span id="period-hot-title">최근 3달간 가장 많이 나온 번호 TOP 6</span>
                         </span>
-                        <span class="text-[10px] text-amber-400/80 bg-amber-950/60 px-1.5 py-0.5 rounded font-mono">HOT</span>
+                        <span class="text-[10px] text-amber-400/80 bg-amber-950/60 px-1.5 py-0.5 rounded font-mono">HOT 6</span>
                     </div>
                     <div id="period-hot-balls" class="flex flex-wrap items-center gap-2 pt-1 min-h-[50px]">
                         <!-- JS 렌더링 -->
@@ -186,9 +186,9 @@
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-black text-cyan-300 flex items-center space-x-1.5">
                             <i data-lucide="snowflake" class="w-4 h-4 text-cyan-400"></i>
-                            <span id="period-cold-title">최근 3달간 가장 안 나온 번호 (미출현)</span>
+                            <span id="period-cold-title">최근 3달간 가장 안 나온 번호 (미출현) TOP 6</span>
                         </span>
-                        <span class="text-[10px] text-cyan-400/80 bg-cyan-950/60 px-1.5 py-0.5 rounded font-mono">COLD</span>
+                        <span class="text-[10px] text-cyan-400/80 bg-cyan-950/60 px-1.5 py-0.5 rounded font-mono">COLD 6</span>
                     </div>
                     <div id="period-cold-balls" class="flex flex-wrap items-center gap-2 pt-1 min-h-[50px]">
                         <!-- JS 렌더링 -->
@@ -630,8 +630,8 @@
 
             const hotTitle = document.getElementById('period-hot-title');
             const coldTitle = document.getElementById('period-cold-title');
-            if (hotTitle) hotTitle.textContent = `${PERIOD_NAMES[currentPeriod]} 많이 나온 번호 TOP 5`;
-            if (coldTitle) coldTitle.textContent = `${PERIOD_NAMES[currentPeriod]} 가장 안 나온 번호 (미출현)`;
+            if (hotTitle) hotTitle.textContent = `${PERIOD_NAMES[currentPeriod]} 많이 나온 번호 TOP 6`;
+            if (coldTitle) coldTitle.textContent = `${PERIOD_NAMES[currentPeriod]} 가장 안 나온 번호 (미출현) TOP 6`;
 
             const hotContainer = document.getElementById('period-hot-balls');
             const coldContainer = document.getElementById('period-cold-balls');
@@ -642,10 +642,10 @@
                 return;
             }
 
-            // 1) 가장 많이 나온 번호 TOP 5 (동점자 포함)
-            const top5Hot = stats.ranking.slice(0, 5);
+            // 1) 가장 많이 나온 번호 TOP 6 (1게임 조합 구성 가능)
+            const top6Hot = stats.ranking.slice(0, 6);
             if (hotContainer) {
-                hotContainer.innerHTML = top5Hot.map((item, idx) => `
+                hotContainer.innerHTML = top6Hot.map((item, idx) => `
                     <div class="flex items-center space-x-1.5 bg-slate-900 border border-amber-800/50 px-2 py-1.5 rounded-xl shadow">
                         <span class="text-[10px] font-black ${idx === 0 ? 'text-amber-400' : 'text-slate-400'}">${idx + 1}위</span>
                         ${getBallHtml(item.number, 'ball-sm')}
@@ -657,13 +657,12 @@
                 `).join('');
             }
 
-            // 2) 가장 안 나온 번호 TOP 5 (출현 횟수 적은 순)
-            // 출현 빈도가 오름차순(0회, 1회...)
+            // 2) 가장 안 나온 번호 TOP 6 (출현 횟수 적은 순)
             const coldRanking = [...stats.ranking].sort((a, b) => a.count - b.count);
-            const top5Cold = coldRanking.slice(0, 5);
+            const top6Cold = coldRanking.slice(0, 6);
 
             if (coldContainer) {
-                coldContainer.innerHTML = top5Cold.map((item, idx) => `
+                coldContainer.innerHTML = top6Cold.map((item, idx) => `
                     <div class="flex items-center space-x-1.5 bg-slate-900 border border-cyan-800/50 px-2 py-1.5 rounded-xl shadow">
                         <span class="text-[10px] font-black text-cyan-400">${item.count === 0 ? '미출현' : `${item.count}회`}</span>
                         ${getBallHtml(item.number, 'ball-sm')}
