@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>실시간 학습형 로또 AI - Quantum Lotto Studio</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS (엑셀 파싱) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: #0b0f19;
+            color: #f1f5f9;
+        }
+
+        /* 로또 볼 스타일링 (공식 로또 규격 색상) */
+        .lotto-ball {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 0.95rem;
+            box-shadow: inset -3px -3px 6px rgba(0, 0, 0, 0.45), 0 3px 6px rgba(0, 0, 0, 0.3);
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+            user-select: none;
+            transition: transform 0.15s ease;
+        }
+        .lotto-ball:hover {
+            transform: scale(1.1);
+        }
+
+        .ball-sm {
+            width: 30px;
+            height: 30px;
+            font-size: 0.8rem;
+        }
+
+        .ball-xs {
+            width: 24px;
+            height: 24px;
+            font-size: 0.75rem;
+        }
+
+        /* 1~10: 노랑 */
+        .ball-range-1 { background: radial-gradient(circle at 30% 30%, #fef08a, #eab308, #ca8a04); color: #1e293b; }
+        /* 11~20: 파랑 */
+        .ball-range-2 { background: radial-gradient(circle at 30% 30%, #93c5fd, #3b82f6, #1d4ed8); color: #ffffff; }
+        /* 21~30: 빨강 */
+        .ball-range-3 { background: radial-gradient(circle at 30% 30%, #fca5a5, #ef4444, #b91c1c); color: #ffffff; }
+        /* 31~40: 회색/검정 */
+        .ball-range-4 { background: radial-gradient(circle at 30% 30%, #cbd5e1, #64748b, #334155); color: #ffffff; }
+        /* 41~45: 녹색 */
+        .ball-range-5 { background: radial-gradient(circle at 30% 30%, #86efac, #22c55e, #15803d); color: #ffffff; }
+
+        .pop-in {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            opacity: 0;
+            transform: scale(0.4);
+        }
+        @keyframes popIn {
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        /* 스크롤바 */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white pb-10">
+
+    <!-- 상단 고정 헤더 -->
+    <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 shadow-lg px-3 sm:px-4 py-3">
+        <div class="max-w-5xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-base sm:text-lg font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-cyan-300 to-emerald-400">
+                        QUANTUM LOTTO AI
+                    </h1>
+                    <p class="text-[10px] sm:text-[11px] text-slate-400 font-medium flex items-center space-x-1">
+                        <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span>매주 토요일 20:45 발표 자동동기화</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- 우측 액션 버튼들 -->
+            <div class="flex items-center space-x-1.5 sm:space-x-2">
+                <button onclick="syncOfficialData(true)" id="btn-sync-api" class="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all shadow-sm active:scale-95" title="토요일 최신 회차 즉시 업데이트">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="sync-icon"></i>
+                    <span class="hidden sm:inline">최신회차</span> <span>동기화</span>
+                </button>
+                <button onclick="openFrequencyModal()" class="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg transition-all">
+                    <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-amber-400"></i>
+                    <span class="hidden xs:inline">전체</span> <span>랭킹</span>
+                </button>
+                <button onclick="openDataModal()" class="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition-all shadow-sm">
+                    <i data-lucide="database" class="w-3.5 h-3.5 text-cyan-400"></i>
+                    <span id="data-count-badge" class="bg-cyan-950 text-cyan-300 text-[10px] px-1.5 py-0.2 rounded-full border border-cyan-800/60">0회</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 실시간 동기화 상태 알림 배너 -->
+    <div id="sync-status-banner" class="bg-indigo-950/40 border-b border-indigo-900/50 py-1.5 px-4 text-center text-xs text-indigo-300 flex items-center justify-center space-x-2">
+        <i data-lucide="info" class="w-3.5 h-3.5 text-indigo-400"></i>
+        <span id="sync-banner-text">동행복권 공식 서버 연결 확인 중...</span>
+    </div>
+
+    <!-- 메인 컨테이너 -->
+    <main class="max-w-5xl mx-auto w-full px-3 sm:px-4 py-4 sm:py-6 space-y-5 flex-grow">
+
+        <!-- ⭐ [신규] 기간별(1주일/1개월/3개월/6개월/전체) 맞춤 분석 섹션 -->
+        <section class="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-xl space-y-3.5">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-800 pb-3">
+                <div class="flex items-center space-x-2">
+                    <div class="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        <i data-lucide="calendar-range" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xs sm:text-sm font-extrabold text-white flex items-center space-x-1.5">
+                            <span>기간별 집중 분석</span>
+                            <span id="period-badge-info" class="text-[10px] font-semibold text-amber-400 bg-amber-950/60 border border-amber-700/50 px-2 py-0.2 rounded-full">최근 3달 (13회차)</span>
+                        </h2>
+                        <p class="text-[10px] text-slate-400">기간을 터치하면 해당 기간의 가장 많이 나온 번호와 안 나온 번호가 즉시 바뀝니다.</p>
+                    </div>
+                </div>
+
+                <!-- 기간 선택 메뉴 탭 -->
+                <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs overflow-x-auto">
+                    <button onclick="setPeriod('1w')" id="period-btn-1w" class="period-tab px-2.5 py-1 rounded-lg font-bold text-slate-400 hover:text-white transition-all whitespace-nowrap">
+                        1주일
+                    </button>
+                    <button onclick="setPeriod('1m')" id="period-btn-1m" class="period-tab px-2.5 py-1 rounded-lg font-bold text-slate-400 hover:text-white transition-all whitespace-nowrap">
+                        1달
+                    </button>
+                    <button onclick="setPeriod('3m')" id="period-btn-3m" class="period-tab px-2.5 py-1 rounded-lg font-bold text-indigo-300 bg-indigo-950 border border-indigo-700/60 transition-all whitespace-nowrap">
+                        3달 🔥
+                    </button>
+                    <button onclick="setPeriod('6m')" id="period-btn-6m" class="period-tab px-2.5 py-1 rounded-lg font-bold text-slate-400 hover:text-white transition-all whitespace-nowrap">
+                        6달
+                    </button>
+                    <button onclick="setPeriod('all')" id="period-btn-all" class="period-tab px-2.5 py-1 rounded-lg font-bold text-slate-400 hover:text-white transition-all whitespace-nowrap">
+                        전체(역대)
+                    </button>
+                </div>
+            </div>
+
+            <!-- 기간별 [많이 나온 번호] vs [가장 안 나온 번호] 2열 대조 카드 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <!-- 🔥 많이 나온 번호 카드 -->
+                <div class="bg-slate-950/70 border border-amber-900/40 p-3.5 rounded-xl space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-black text-amber-300 flex items-center space-x-1.5">
+                            <i data-lucide="flame" class="w-4 h-4 text-amber-400 animate-bounce"></i>
+                            <span id="period-hot-title">최근 3달간 가장 많이 나온 번호 TOP 5</span>
+                        </span>
+                        <span class="text-[10px] text-amber-400/80 bg-amber-950/60 px-1.5 py-0.5 rounded font-mono">HOT</span>
+                    </div>
+                    <div id="period-hot-balls" class="flex flex-wrap items-center gap-2 pt-1 min-h-[50px]">
+                        <!-- JS 렌더링 -->
+                    </div>
+                </div>
+
+                <!-- ❄️ 가장 안 나온 번호 (미출현) 카드 -->
+                <div class="bg-slate-950/70 border border-cyan-900/40 p-3.5 rounded-xl space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-black text-cyan-300 flex items-center space-x-1.5">
+                            <i data-lucide="snowflake" class="w-4 h-4 text-cyan-400"></i>
+                            <span id="period-cold-title">최근 3달간 가장 안 나온 번호 (미출현)</span>
+                        </span>
+                        <span class="text-[10px] text-cyan-400/80 bg-cyan-950/60 px-1.5 py-0.5 rounded font-mono">COLD</span>
+                    </div>
+                    <div id="period-cold-balls" class="flex flex-wrap items-center gap-2 pt-1 min-h-[50px]">
+                        <!-- JS 렌더링 -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 상단 대시보드 요약 카드 -->
+        <section class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+            <div class="bg-slate-900/70 border border-slate-800 p-3.5 rounded-xl">
+                <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+                    <span>총 학습 회차</span>
+                    <i data-lucide="layers" class="w-3.5 h-3.5 text-indigo-400"></i>
+                </div>
+                <div id="stat-total-rounds" class="text-lg sm:text-xl font-extrabold text-white">0 회</div>
+                <div id="stat-latest-round" class="text-[11px] text-slate-500 mt-0.5">최신: - 회차</div>
+            </div>
+
+            <div class="bg-slate-900/70 border border-slate-800 p-3.5 rounded-xl cursor-pointer hover:border-amber-500/50 transition-all" onclick="openFrequencyModal()">
+                <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+                    <span>역대 1위 최빈출</span>
+                    <i data-lucide="trophy" class="w-3.5 h-3.5 text-amber-400"></i>
+                </div>
+                <div id="stat-alltime-top" class="flex items-center space-x-1.5 mt-1 text-sm font-bold text-amber-300">
+                    분석 중...
+                </div>
+            </div>
+
+            <div class="bg-slate-900/70 border border-slate-800 p-3.5 rounded-xl">
+                <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+                    <span>최장 미출현 번호</span>
+                    <i data-lucide="clock-alert" class="w-3.5 h-3.5 text-cyan-400"></i>
+                </div>
+                <div id="stat-longest-cold" class="flex items-center space-x-1 mt-1 text-sm font-bold text-cyan-300">
+                    분석 중...
+                </div>
+            </div>
+
+            <div class="bg-slate-900/70 border border-slate-800 p-3.5 rounded-xl">
+                <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+                    <span>토요일 자동갱신</span>
+                    <i data-lucide="radio" class="w-3.5 h-3.5 text-emerald-400"></i>
+                </div>
+                <div class="flex items-center space-x-1.5 mt-1">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="text-xs sm:text-sm font-bold text-emerald-300">자동 감지 활성</span>
+                </div>
+                <div class="text-[10px] text-slate-500 mt-0.5">매주 토 20:45 발표 연동</div>
+            </div>
+        </section>
+
+        <!-- 메인 생성기 영역 -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
+
+            <!-- 좌측: AI 모델 및 파라미터 제어 -->
+            <div class="lg:col-span-5 space-y-4">
+                <div class="bg-slate-900 border border-slate-800/80 p-4 sm:p-5 rounded-2xl shadow-xl space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <h2 class="text-sm font-bold flex items-center space-x-2 text-white">
+                            <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i>
+                            <span>AI 추천 전략 모델</span>
+                        </h2>
+                        <span class="text-[11px] text-indigo-400 bg-indigo-950/70 border border-indigo-800/60 px-2 py-0.5 rounded-full">가중치 엔진</span>
+                    </div>
+
+                    <!-- 전략 선택 -->
+                    <div class="space-y-2">
+                        <label class="text-xs text-slate-300 font-medium block">알고리즘 모드 선택</label>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <label class="flex items-center p-2.5 rounded-xl border border-slate-700 bg-slate-800/60 cursor-pointer hover:bg-slate-800 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-950/30 transition-all">
+                                <input type="radio" name="strategy" value="balanced" checked class="text-indigo-600 focus:ring-0 mr-2">
+                                <div>
+                                    <div class="font-bold text-slate-200">⚖️ 황금 밸런스</div>
+                                    <div class="text-[10px] text-slate-400">정규분포 최적화</div>
+                                </div>
+                            </label>
+                            <label class="flex items-center p-2.5 rounded-xl border border-slate-700 bg-slate-800/60 cursor-pointer hover:bg-slate-800 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-950/30 transition-all">
+                                <input type="radio" name="strategy" value="hot" class="text-indigo-600 focus:ring-0 mr-2">
+                                <div>
+                                    <div class="font-bold text-slate-200">🔥 최빈출 추종</div>
+                                    <div class="text-[10px] text-slate-400">선택 기간 핫번호 가중</div>
+                                </div>
+                            </label>
+                            <label class="flex items-center p-2.5 rounded-xl border border-slate-700 bg-slate-800/60 cursor-pointer hover:bg-slate-800 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-950/30 transition-all">
+                                <input type="radio" name="strategy" value="cold" class="text-indigo-600 focus:ring-0 mr-2">
+                                <div>
+                                    <div class="font-bold text-slate-200">⏳ 반전 기대</div>
+                                    <div class="text-[10px] text-slate-400">선택 기간 미출현 우선</div>
+                                </div>
+                            </label>
+                            <label class="flex items-center p-2.5 rounded-xl border border-slate-700 bg-slate-800/60 cursor-pointer hover:bg-slate-800 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-950/30 transition-all">
+                                <input type="radio" name="strategy" value="quantum" class="text-indigo-600 focus:ring-0 mr-2">
+                                <div>
+                                    <div class="font-bold text-slate-200">⚛️ 몬테카를로</div>
+                                    <div class="text-[10px] text-slate-400">양자 난수 시뮬</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 통계 필터링 토글 -->
+                    <div class="space-y-2 pt-2 border-t border-slate-800">
+                        <label class="text-xs text-slate-300 font-medium block">1등 공식 수학적 필터</label>
+                        <div class="space-y-1.5 text-xs text-slate-300">
+                            <label class="flex items-center justify-between p-2 rounded-lg bg-slate-800/40 border border-slate-800 cursor-pointer hover:bg-slate-800/80">
+                                <span>홀짝 비율 균형 (2:4, 3:3, 4:2)</span>
+                                <input type="checkbox" id="filter-odd-even" checked class="rounded border-slate-700 text-indigo-500 focus:ring-0">
+                            </label>
+                            <label class="flex items-center justify-between p-2 rounded-lg bg-slate-800/40 border border-slate-800 cursor-pointer hover:bg-slate-800/80">
+                                <span>총합 필터 (총합 95 ~ 180 최적 구간)</span>
+                                <input type="checkbox" id="filter-sum" checked class="rounded border-slate-700 text-indigo-500 focus:ring-0">
+                            </label>
+                            <label class="flex items-center justify-between p-2 rounded-lg bg-slate-800/40 border border-slate-800 cursor-pointer hover:bg-slate-800/80">
+                                <span>연속 번호 제한 (3연번 이상 배제)</span>
+                                <input type="checkbox" id="filter-consecutive" checked class="rounded border-slate-700 text-indigo-500 focus:ring-0">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 고정수 / 제외수 설정 -->
+                    <div class="space-y-2 pt-2 border-t border-slate-800">
+                        <div class="flex items-center justify-between">
+                            <label class="text-xs text-slate-300 font-medium">고정수/제외수 (반자동)</label>
+                            <button onclick="toggleNumberPicker()" class="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold">
+                                번호판 펼치기
+                            </button>
+                        </div>
+
+                        <div class="flex gap-2 text-xs">
+                            <div class="flex-1 bg-slate-800/60 p-2 rounded-xl border border-slate-700">
+                                <span class="text-emerald-400 font-bold block mb-1">📌 고정수 (포함)</span>
+                                <div id="fixed-numbers-preview" class="text-slate-400 italic text-[11px]">선택 없음</div>
+                            </div>
+                            <div class="flex-1 bg-slate-800/60 p-2 rounded-xl border border-slate-700">
+                                <span class="text-rose-400 font-bold block mb-1">🚫 제외수 (배제)</span>
+                                <div id="excluded-numbers-preview" class="text-slate-400 italic text-[11px]">선택 없음</div>
+                            </div>
+                        </div>
+
+                        <div id="number-picker-container" class="hidden bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                            <div class="text-[11px] text-slate-400 flex justify-between items-center">
+                                <span>좌클릭: 고정(초록) / 우클릭: 제외(빨강)</span>
+                                <button onclick="resetNumberSelections()" class="text-[10px] text-slate-400 hover:text-white underline">초기화</button>
+                            </div>
+                            <div id="balls-selection-grid" class="grid grid-cols-9 gap-1 max-h-48 overflow-y-auto p-1">
+                                <!-- JS 생성 -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 액션 버튼 -->
+                    <div class="pt-2 flex flex-col sm:flex-row gap-2">
+                        <button onclick="generateGameSet(5)" class="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-500 via-indigo-600 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-white font-extrabold text-sm shadow-lg shadow-indigo-500/25 transition-all flex items-center justify-center space-x-2 active:scale-[0.98]">
+                            <i data-lucide="zap" class="w-4 h-4"></i>
+                            <span>5게임 세트 생성</span>
+                        </button>
+                        <button onclick="generateGameSet(1)" class="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-sm transition-all flex items-center justify-center space-x-1.5 active:scale-[0.98]">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>1게임</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 과거 회차 백테스트 카드 -->
+                <div class="bg-slate-900 border border-slate-800/80 p-4 sm:p-5 rounded-2xl space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xs font-bold flex items-center space-x-2 text-slate-200">
+                            <i data-lucide="activity" class="w-4 h-4 text-amber-400"></i>
+                            <span>과거 회차 즉시 백테스트</span>
+                        </h3>
+                        <span class="text-[10px] text-slate-400">적중률 검증</span>
+                    </div>
+                    <p class="text-xs text-slate-400">현재 학습된 데이터와 AI 가중치로 과거 회차를 시뮬레이션합니다.</p>
+                    <button onclick="runBacktest()" class="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold text-amber-300 flex items-center justify-center space-x-1.5 transition-all">
+                        <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                        <span>최근 20회차 가상 시뮬레이션 실행</span>
+                    </button>
+                    <div id="backtest-result" class="hidden text-xs bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1"></div>
+                </div>
+            </div>
+
+            <!-- 우측: 생성된 로또 번호 결과표 -->
+            <div class="lg:col-span-7 space-y-4">
+                <div class="bg-slate-900 border border-slate-800/80 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-col min-h-[500px]">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                        <div class="flex items-center space-x-2">
+                            <i data-lucide="ticket" class="w-4 h-4 text-cyan-400"></i>
+                            <h2 class="text-sm font-bold text-white">생성된 AI 추천 조합</h2>
+                            <span id="generated-count" class="text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">0조합</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="copyAllResults()" class="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 flex items-center space-x-1 transition-all">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                <span>전체 복사</span>
+                            </button>
+                            <button onclick="clearResults()" class="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-rose-400 hover:text-rose-300 transition-all">
+                                초기화
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 결과 리스트 -->
+                    <div id="results-container" class="space-y-3 flex-grow overflow-y-auto pr-1">
+                        <div id="empty-placeholder" class="h-64 flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                            <div class="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-3">
+                                <i data-lucide="sparkle" class="w-8 h-8 text-slate-600"></i>
+                            </div>
+                            <p class="text-sm font-medium text-slate-400">아직 생성된 추천 조합이 없습니다.</p>
+                            <p class="text-xs text-slate-500 mt-1">좌측의 '5게임 세트 생성' 버튼을 눌러 AI 추천 번호를 받아보세요!</p>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 mt-auto border-t border-slate-800 flex items-center justify-between text-xs text-slate-500">
+                        <span>💡 동행복권 공식 통계 데이터 연동 중</span>
+                        <span id="generation-timestamp" class="text-[11px] text-slate-600"></span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- 📊 역대 가장 많이 나온 숫자 (최빈출 순위 전체 모달) -->
+    <div id="frequency-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="bar-chart-2" class="w-4 h-4 text-amber-400"></i>
+                    <h3 class="font-bold text-white text-sm" id="freq-modal-title">1~45번 출현 빈도 전체 순위표</h3>
+                </div>
+                <button onclick="closeFrequencyModal()" class="text-slate-400 hover:text-white p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-4 overflow-y-auto space-y-3">
+                <div class="text-xs text-slate-400 flex items-center justify-between bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                    <span>분석 대상: <b id="freq-modal-target-info" class="text-white">전체 회차</b></span>
+                    <span>1위 번호: <b id="freq-modal-top-one" class="text-amber-400">-</b></span>
+                </div>
+
+                <!-- 1~45번 순위 리스트 -->
+                <div id="frequency-ranking-list" class="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
+                    <!-- JS 렌더링 -->
+                </div>
+            </div>
+
+            <div class="p-3 border-t border-slate-800 bg-slate-950 text-right">
+                <button onclick="closeFrequencyModal()" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-all">
+                    닫기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 데이터 관리 모달 -->
+    <div id="data-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="database" class="w-4 h-4 text-indigo-400"></i>
+                    <h3 class="font-bold text-white text-sm">로또 회차 데이터 관리 & 공식 동기화</h3>
+                </div>
+                <button onclick="closeDataModal()" class="text-slate-400 hover:text-white p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-5 space-y-4 overflow-y-auto">
+                <div class="bg-indigo-950/40 border border-indigo-800/60 p-4 rounded-xl flex items-center justify-between">
+                    <div>
+                        <div class="text-xs font-bold text-indigo-300">동행복권 공식 서버 실시간 동기화</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5">역대 1회부터 최신 회차까지 한 번에 갱신합니다.</div>
+                    </div>
+                    <button onclick="syncOfficialData(true)" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all flex items-center space-x-1 shrink-0">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        <span>지금 갱신</span>
+                    </button>
+                </div>
+
+                <div class="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl p-4 text-center transition-all bg-slate-800/30">
+                    <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleFileSelect(event)">
+                    <label for="excel-file-input" class="cursor-pointer flex flex-col items-center justify-center">
+                        <i data-lucide="upload-cloud" class="w-8 h-8 text-indigo-400 mb-1"></i>
+                        <span class="text-xs font-semibold text-slate-200">동행복권 엑셀(.xlsx, .csv) 직접 수동 업로드</span>
+                        <span class="text-[11px] text-slate-400 mt-0.5">파일이 있을 경우 드래그하여 등록할 수 있습니다.</span>
+                    </label>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center text-xs text-slate-400">
+                        <span>현재 등록된 회차 내역</span>
+                        <span id="modal-round-count">0개 회차</span>
+                    </div>
+                    <div id="rounds-table-preview" class="max-h-52 overflow-y-auto bg-slate-950 rounded-xl border border-slate-800 p-2 text-xs divide-y divide-slate-800">
+                        <!-- JS 렌더링 -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-3 border-t border-slate-800 bg-slate-950 text-right">
+                <button onclick="closeDataModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all">
+                    확인 및 닫기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 푸터 -->
+    <footer class="bg-slate-950 border-t border-slate-900 py-4 px-4 text-center text-xs text-slate-500">
+        <p>Quantum Lotto AI &copy; 2026 실시간 학습형 로또 엔진</p>
+        <p class="text-[11px] text-slate-600 mt-0.5">매주 토요일 20:45분 동행복권 공식 추첨 결과 실시간 반영 시스템 탑재</p>
+    </footer>
+
+    <!-- 자바스크립트 로직 -->
+    <script>
+        // ----------------------------------------------------
+        // 1. 앱 상태
+        // ----------------------------------------------------
+        let lottoHistory = [];
+        let currentPeriod = '3m'; // '1w', '1m', '3m', '6m', 'all'
+        let fixedNumbers = new Set();
+        let excludedNumbers = new Set();
+        let generatedGames = [];
+
+        // 기간별 회차 수 정의
+        const PERIOD_ROUNDS = {
+            '1w': 1,    // 직전 1주 (1회차)
+            '1m': 4,    // 최근 1달 (4회차)
+            '3m': 13,   // 최근 3달 (13회차)
+            '6m': 26,   // 최근 6달 (26회차)
+            'all': 99999// 역대 전체
+        };
+
+        const PERIOD_NAMES = {
+            '1w': '최근 1주일 (직전 1회차)',
+            '1m': '최근 1달 (4회차)',
+            '3m': '최근 3달 (13회차)',
+            '6m': '최근 6달 (26회차)',
+            'all': '전체 역대 회차'
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadStoredData();
+            buildNumberPicker();
+            updatePeriodView();
+            updateDashboard();
+
+            // 백엔드 동기화 시도
+            syncOfficialData(false);
+        });
+
+        // ----------------------------------------------------
+        // 2. 기간 탭 변경 함수
+        // ----------------------------------------------------
+        function setPeriod(period) {
+            currentPeriod = period;
+
+            // 버튼 스타일 갱신
+            ['1w', '1m', '3m', '6m', 'all'].forEach(p => {
+                const btn = document.getElementById(`period-btn-${p}`);
+                if (!btn) return;
+                if (p === period) {
+                    btn.className = 'period-tab px-2.5 py-1 rounded-lg font-bold text-indigo-300 bg-indigo-950 border border-indigo-700/60 transition-all whitespace-nowrap shadow-sm';
+                } else {
+                    btn.className = 'period-tab px-2.5 py-1 rounded-lg font-bold text-slate-400 hover:text-white transition-all whitespace-nowrap';
+                }
+            });
+
+            updatePeriodView();
+        }
+
+        // ----------------------------------------------------
+        // 3. 통계 계산 (특정 기간 슬라이스 기반)
+        // ----------------------------------------------------
+        function getFilteredHistory(period = currentPeriod) {
+            const sorted = [...lottoHistory].sort((a, b) => b.round - a.round);
+            const count = PERIOD_ROUNDS[period] || 99999;
+            return sorted.slice(0, count);
+        }
+
+        function calculateStatisticsForRounds(roundsList) {
+            const frequency = {};
+            const lastAppearedRound = {};
+
+            for (let i = 1; i <= 45; i++) {
+                frequency[i] = 0;
+                lastAppearedRound[i] = 0;
+            }
+
+            const totalRounds = roundsList.length;
+            const latestRound = totalRounds > 0 ? roundsList[0].round : 0;
+
+            roundsList.forEach((entry) => {
+                entry.numbers.forEach(num => {
+                    if (num >= 1 && num <= 45) {
+                        frequency[num] = (frequency[num] || 0) + 1;
+                        if (!lastAppearedRound[num]) {
+                            lastAppearedRound[num] = entry.round;
+                        }
+                    }
+                });
+            });
+
+            const coldPeriods = {};
+            for (let i = 1; i <= 45; i++) {
+                coldPeriods[i] = lastAppearedRound[i] ? (latestRound - lastAppearedRound[i]) : totalRounds;
+            }
+
+            // 순위 정렬
+            const ranking = Object.entries(frequency)
+                .map(([num, count]) => ({
+                    number: parseInt(num),
+                    count: count,
+                    rate: totalRounds > 0 ? ((count / (totalRounds * 6)) * 100).toFixed(1) : 0,
+                    percentOfRounds: totalRounds > 0 ? ((count / totalRounds) * 100).toFixed(0) : 0,
+                    cold: coldPeriods[num]
+                }))
+                .sort((a, b) => b.count - a.count);
+
+            return { frequency, coldPeriods, totalRounds, latestRound, ranking };
+        }
+
+        // ----------------------------------------------------
+        // 4. 기간별 분석 UI 렌더링 (많이 나온 번호 & 안 나온 번호)
+        // ----------------------------------------------------
+        function updatePeriodView() {
+            const targetRounds = getFilteredHistory(currentPeriod);
+            const stats = calculateStatisticsForRounds(targetRounds);
+
+            // 배지 정보 갱신
+            const badge = document.getElementById('period-badge-info');
+            if (badge) {
+                badge.textContent = `${PERIOD_NAMES[currentPeriod]} (총 ${stats.totalRounds}회차 분석)`;
+            }
+
+            const hotTitle = document.getElementById('period-hot-title');
+            const coldTitle = document.getElementById('period-cold-title');
+            if (hotTitle) hotTitle.textContent = `${PERIOD_NAMES[currentPeriod]} 많이 나온 번호 TOP 5`;
+            if (coldTitle) coldTitle.textContent = `${PERIOD_NAMES[currentPeriod]} 가장 안 나온 번호 (미출현)`;
+
+            const hotContainer = document.getElementById('period-hot-balls');
+            const coldContainer = document.getElementById('period-cold-balls');
+
+            if (stats.totalRounds === 0) {
+                if (hotContainer) hotContainer.innerHTML = '<span class="text-xs text-slate-500">데이터가 없습니다.</span>';
+                if (coldContainer) coldContainer.innerHTML = '<span class="text-xs text-slate-500">데이터가 없습니다.</span>';
+                return;
+            }
+
+            // 1) 가장 많이 나온 번호 TOP 5 (동점자 포함)
+            const top5Hot = stats.ranking.slice(0, 5);
+            if (hotContainer) {
+                hotContainer.innerHTML = top5Hot.map((item, idx) => `
+                    <div class="flex items-center space-x-1.5 bg-slate-900 border border-amber-800/50 px-2 py-1.5 rounded-xl shadow">
+                        <span class="text-[10px] font-black ${idx === 0 ? 'text-amber-400' : 'text-slate-400'}">${idx + 1}위</span>
+                        ${getBallHtml(item.number, 'ball-sm')}
+                        <div class="text-left pl-0.5">
+                            <div class="text-[11px] font-bold text-amber-300">${item.count}회</div>
+                            <div class="text-[9px] text-slate-400">${item.percentOfRounds}%</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // 2) 가장 안 나온 번호 TOP 5 (출현 횟수 적은 순)
+            // 출현 빈도가 오름차순(0회, 1회...)
+            const coldRanking = [...stats.ranking].sort((a, b) => a.count - b.count);
+            const top5Cold = coldRanking.slice(0, 5);
+
+            if (coldContainer) {
+                coldContainer.innerHTML = top5Cold.map((item, idx) => `
+                    <div class="flex items-center space-x-1.5 bg-slate-900 border border-cyan-800/50 px-2 py-1.5 rounded-xl shadow">
+                        <span class="text-[10px] font-black text-cyan-400">${item.count === 0 ? '미출현' : `${item.count}회`}</span>
+                        ${getBallHtml(item.number, 'ball-sm')}
+                        <div class="text-left pl-0.5">
+                            <div class="text-[11px] font-bold ${item.count === 0 ? 'text-rose-400' : 'text-cyan-200'}">
+                                ${item.count === 0 ? '0회 출현' : `${item.count}회 출현`}
+                            </div>
+                            <div class="text-[9px] text-slate-400">${item.cold}주전 출현</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            lucide.createIcons();
+        }
+
+        // ----------------------------------------------------
+        // 5. 대시보드 요약 갱신
+        // ----------------------------------------------------
+        function updateDashboard() {
+            const allStats = calculateStatisticsForRounds(lottoHistory);
+            document.getElementById('stat-total-rounds').textContent = `${allStats.totalRounds} 회`;
+            document.getElementById('stat-latest-round').textContent = allStats.latestRound ? `최신: ${allStats.latestRound} 회차` : '데이터 없음';
+            document.getElementById('data-count-badge').textContent = `${allStats.totalRounds}회`;
+
+            // 역대 1위 최빈출
+            const topOneContainer = document.getElementById('stat-alltime-top');
+            if (allStats.ranking.length > 0 && allStats.totalRounds > 0) {
+                const top1 = allStats.ranking[0];
+                topOneContainer.innerHTML = `
+                    ${getBallHtml(top1.number, 'ball-sm')}
+                    <span class="font-black text-amber-300 ml-1">${top1.count}회</span>
+                    <span class="text-[10px] text-slate-400">(${top1.percentOfRounds}%)</span>
+                `;
+            } else {
+                topOneContainer.textContent = '분석 대기';
+            }
+
+            // 최장 미출현 번호
+            const sortedCold = Object.entries(allStats.coldPeriods)
+                .sort((a, b) => b[1] - a[1]);
+            const longestColdContainer = document.getElementById('stat-longest-cold');
+            if (sortedCold.length > 0 && allStats.totalRounds > 0) {
+                const coldNum = parseInt(sortedCold[0][0]);
+                const coldWeeks = sortedCold[0][1];
+                longestColdContainer.innerHTML = `
+                    ${getBallHtml(coldNum, 'ball-sm')}
+                    <span class="font-bold text-cyan-300 ml-1">${coldWeeks}주 연속</span>
+                `;
+            } else {
+                longestColdContainer.textContent = '분석 대기';
+            }
+
+            updatePeriodView();
+        }
+
+        // ----------------------------------------------------
+        // 6. 최빈출 순위 전체 모달 (1위~45위)
+        // ----------------------------------------------------
+        function openFrequencyModal() {
+            const targetRounds = getFilteredHistory(currentPeriod);
+            const stats = calculateStatisticsForRounds(targetRounds);
+            const modal = document.getElementById('frequency-modal');
+            modal.classList.remove('hidden');
+
+            document.getElementById('freq-modal-title').textContent = `${PERIOD_NAMES[currentPeriod]} 1~45번 순위표`;
+            document.getElementById('freq-modal-target-info').textContent = `${PERIOD_NAMES[currentPeriod]} (총 ${stats.totalRounds}회차)`;
+
+            if (stats.ranking.length > 0) {
+                const top1 = stats.ranking[0];
+                document.getElementById('freq-modal-top-one').textContent = `${top1.number}번 (${top1.count}회 출현)`;
+            }
+
+            const maxCount = stats.ranking.length > 0 ? Math.max(1, stats.ranking[0].count) : 1;
+            const container = document.getElementById('frequency-ranking-list');
+
+            container.innerHTML = stats.ranking.map((item, idx) => {
+                const barWidth = Math.max(4, (item.count / maxCount) * 100);
+                let rankBadge = `${idx + 1}위`;
+                let rankClass = "text-slate-400 bg-slate-800";
+                if (idx === 0) { rankBadge = "🥇 1위"; rankClass = "text-amber-300 bg-amber-950/70 border border-amber-600/50"; }
+                else if (idx === 1) { rankBadge = "🥈 2위"; rankClass = "text-slate-200 bg-slate-700/70"; }
+                else if (idx === 2) { rankBadge = "🥉 3위"; rankClass = "text-amber-500 bg-amber-950/40"; }
+
+                return `
+                    <div class="flex items-center space-x-2.5 p-2 rounded-xl bg-slate-950/60 border border-slate-800 text-xs">
+                        <span class="w-12 text-center text-[10px] font-bold px-1 py-0.5 rounded ${rankClass}">${rankBadge}</span>
+                        ${getBallHtml(item.number, 'ball-xs')}
+                        <div class="flex-grow">
+                            <div class="flex justify-between items-center text-[11px] mb-1">
+                                <span class="font-bold text-slate-200">${item.number}번</span>
+                                <span class="text-slate-400"><b class="text-white">${item.count}회</b> (${item.percentOfRounds}% 회차 등장)</span>
+                            </div>
+                            <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                <div class="bg-gradient-to-r from-indigo-500 to-cyan-400 h-1.5 rounded-full" style="width: ${barWidth}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        function closeFrequencyModal() {
+            document.getElementById('frequency-modal').classList.add('hidden');
+        }
+
+        // ----------------------------------------------------
+        // 7. 공식 서버 실시간 동기화 (GitHub Pages & 로컬 겸용)
+        // ----------------------------------------------------
+        async function syncOfficialData(isManual = false) {
+            const syncIcon = document.getElementById('sync-icon');
+            const bannerText = document.getElementById('sync-banner-text');
+            if (syncIcon) syncIcon.classList.add('animate-spin');
+            if (bannerText) bannerText.textContent = '동행복권 공식 서버와 동기화하는 중...';
+
+            let synced = false;
+
+            // 1순위: 로컬 백엔드 서버 확인
+            try {
+                const response = await fetch(`/api/lotto-sync${isManual ? '?force=true' : ''}`, { signal: AbortSignal.timeout(3000) });
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && Array.isArray(result.list) && result.list.length > 0) {
+                        lottoHistory = result.list;
+                        saveDataToStorage();
+                        synced = true;
+                    }
+                }
+            } catch (e) {
+                // 로컬 서버가 없는 GitHub Pages 환경일 수 있음
+            }
+
+            // 2순위: GitHub Pages 정적 파일 lotto_data.json 확인
+            if (!synced && lottoHistory.length === 0) {
+                try {
+                    const response = await fetch('lotto_data.json');
+                    if (response.ok) {
+                        const list = await response.json();
+                        if (Array.isArray(list) && list.length > 0) {
+                            lottoHistory = list;
+                            saveDataToStorage();
+                            synced = true;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('lotto_data.json 로드 실패:', e);
+                }
+            }
+
+            // 3순위: 토요일 신규 회차 확인 (CORS 프록시를 통한 최신 회차 갱신)
+            if (isManual || synced) {
+                try {
+                    const targetUrl = encodeURIComponent('https://www.dhlottery.co.kr/lt645/selectPstLt645Info.do?srchLtEpsd=');
+                    const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${targetUrl}`, { signal: AbortSignal.timeout(4000) });
+                    if (proxyRes.ok) {
+                        const json = await proxyRes.json();
+                        if (json && json.data && Array.isArray(json.data.list) && json.data.list.length > 0) {
+                            const latestItem = json.data.list[0];
+                            const latestRound = latestItem.ltEpsd;
+                            
+                            // 현재 데이터셋에 없으면 추가
+                            const exists = lottoHistory.some(h => h.round === latestRound);
+                            if (!exists) {
+                                const newRound = {
+                                    round: latestRound,
+                                    numbers: [
+                                        latestItem.tm1WnNo,
+                                        latestItem.tm2WnNo,
+                                        latestItem.tm3WnNo,
+                                        latestItem.tm4WnNo,
+                                        latestItem.tm5WnNo,
+                                        latestItem.tm6WnNo
+                                    ].sort((a,b)=>a-b),
+                                    bonus: latestItem.bnsWnNo,
+                                    date: latestItem.ltRflYmd ? `${latestItem.ltRflYmd.slice(0,4)}-${latestItem.ltRflYmd.slice(4,6)}-${latestItem.ltRflYmd.slice(6,8)}` : ''
+                                };
+                                lottoHistory.unshift(newRound);
+                                saveDataToStorage();
+                                if (bannerText) {
+                                    bannerText.innerHTML = `🎉 신규 <b class="text-white">${latestRound}회차</b> 당첨 번호 실시간 반영 완료!`;
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // 프록시 실패 시 기존 데이터 유지
+                }
+            }
+
+            // 배너 텍스트 갱신
+            if (bannerText) {
+                const latest = lottoHistory.length > 0 ? lottoHistory[0] : null;
+                if (latest) {
+                    bannerText.innerHTML = `✅ 최신 <b class="text-white">${latest.round}회차</b> (${latest.date}) 반영 완료 (총 ${lottoHistory.length}개 회차 학습 중)`;
+                } else {
+                    bannerText.textContent = `데이터를 준비하고 있습니다...`;
+                }
+            }
+
+            if (isManual && lottoHistory.length > 0) {
+                const latest = lottoHistory[0];
+                alert(`동행복권 공식 데이터 동기화 완료!\n최신: ${latest.round}회차 (당첨번호: ${latest.numbers.join(', ')} + 보너스 ${latest.bonus})\n총 ${lottoHistory.length}개 회차가 반영되었습니다.`);
+            }
+
+            if (syncIcon) syncIcon.classList.remove('animate-spin');
+            updateDashboard();
+        }
+
+        function loadStoredData() {
+            try {
+                const stored = localStorage.getItem('quantum_lotto_history');
+                if (stored) lottoHistory = JSON.parse(stored);
+            } catch (e) {
+                lottoHistory = [];
+            }
+        }
+
+        function saveDataToStorage() {
+            localStorage.setItem('quantum_lotto_history', JSON.stringify(lottoHistory));
+            updateDashboard();
+        }
+
+        // ----------------------------------------------------
+        // 8. AI 가중치 추천 엔진 (선택한 기간의 통계 가중치 적극 반영)
+        // ----------------------------------------------------
+        function getWeightedPool(strategy) {
+            // 현재 선택된 기간의 통계를 우선 가중치로 활용
+            const periodRounds = getFilteredHistory(currentPeriod);
+            const stats = calculateStatisticsForRounds(periodRounds.length > 0 ? periodRounds : lottoHistory);
+            const weights = {};
+
+            for (let i = 1; i <= 45; i++) {
+                if (excludedNumbers.has(i)) {
+                    weights[i] = 0;
+                    continue;
+                }
+                if (fixedNumbers.has(i)) {
+                    weights[i] = 999999;
+                    continue;
+                }
+
+                const freq = stats.frequency[i] || 0;
+                const cold = stats.coldPeriods[i] || 0;
+
+                if (strategy === 'hot') {
+                    // 선택된 기간 최빈출 집중
+                    weights[i] = 10 + Math.pow(freq + 1, 2.3);
+                } else if (strategy === 'cold') {
+                    // 선택된 기간 미출현/장기미출현 집중
+                    weights[i] = 10 + Math.pow(cold + 1, 1.9);
+                } else if (strategy === 'quantum') {
+                    weights[i] = 10;
+                } else {
+                    // balanced: 밸런스
+                    weights[i] = 15 + (freq * 1.6) + (cold * 1.2);
+                }
+            }
+
+            return weights;
+        }
+
+        function sampleFromWeights(weights, neededCount, currentSelection = []) {
+            const picked = new Set(currentSelection);
+            const candidates = [];
+            const cumulative = [];
+            let totalWeight = 0;
+
+            for (let i = 1; i <= 45; i++) {
+                if (!picked.has(i) && weights[i] > 0) {
+                    candidates.push(i);
+                    totalWeight += weights[i];
+                    cumulative.push(totalWeight);
+                }
+            }
+
+            while (picked.size < neededCount && candidates.length > 0) {
+                const r = Math.random() * totalWeight;
+                let selectedIndex = cumulative.findIndex(c => c >= r);
+                if (selectedIndex === -1) selectedIndex = candidates.length - 1;
+
+                const selectedNum = candidates[selectedIndex];
+                picked.add(selectedNum);
+
+                candidates.splice(selectedIndex, 1);
+                totalWeight = 0;
+                cumulative.length = 0;
+                for (const c of candidates) {
+                    totalWeight += weights[c];
+                    cumulative.push(totalWeight);
+                }
+            }
+
+            return Array.from(picked).sort((a, b) => a - b);
+        }
+
+        function passesFilters(numbers) {
+            const useOddEven = document.getElementById('filter-odd-even').checked;
+            const useSum = document.getElementById('filter-sum').checked;
+            const useConsecutive = document.getElementById('filter-consecutive').checked;
+
+            if (useOddEven) {
+                const oddCount = numbers.filter(n => n % 2 !== 0).length;
+                if (oddCount < 2 || oddCount > 4) return false;
+            }
+
+            if (useSum) {
+                const sum = numbers.reduce((acc, cur) => acc + cur, 0);
+                if (sum < 95 || sum > 185) return false;
+            }
+
+            if (useConsecutive) {
+                let consecutiveChain = 1;
+                for (let i = 0; i < numbers.length - 1; i++) {
+                    if (numbers[i + 1] === numbers[i] + 1) {
+                        consecutiveChain++;
+                        if (consecutiveChain >= 3) return false;
+                    } else {
+                        consecutiveChain = 1;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        function generateGameSet(count = 5) {
+            const strategy = document.querySelector('input[name="strategy"]:checked').value;
+            const weights = getWeightedPool(strategy);
+            const initialFixed = Array.from(fixedNumbers).slice(0, 6);
+            const newGames = [];
+
+            for (let g = 0; g < count; g++) {
+                let attempts = 0;
+                let gameNumbers = [];
+                let valid = false;
+
+                while (attempts < 500 && !valid) {
+                    attempts++;
+                    gameNumbers = sampleFromWeights(weights, 6, initialFixed);
+                    if (passesFilters(gameNumbers) || attempts > 450) {
+                        valid = true;
+                    }
+                }
+
+                newGames.push({
+                    id: Date.now() + '_' + g,
+                    strategy,
+                    period: currentPeriod,
+                    numbers: gameNumbers,
+                    sum: gameNumbers.reduce((a, b) => a + b, 0),
+                    oddEven: `${gameNumbers.filter(n => n % 2 !== 0).length}:${gameNumbers.filter(n => n % 2 === 0).length}`
+                });
+            }
+
+            generatedGames = [...newGames, ...generatedGames];
+            renderResults();
+
+            confetti({
+                particleCount: 40,
+                spread: 60,
+                origin: { y: 0.7 }
+            });
+        }
+
+        function renderResults() {
+            const container = document.getElementById('results-container');
+            const countEl = document.getElementById('generated-count');
+            const timeEl = document.getElementById('generation-timestamp');
+
+            if (generatedGames.length === 0) {
+                container.innerHTML = `
+                    <div id="empty-placeholder" class="h-64 flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                        <div class="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-3">
+                            <i data-lucide="sparkle" class="w-8 h-8 text-slate-600"></i>
+                        </div>
+                        <p class="text-sm font-medium text-slate-400">아직 생성된 추천 조합이 없습니다.</p>
+                        <p class="text-xs text-slate-500 mt-1">좌측의 '5게임 세트 생성' 버튼을 눌러 AI 추천 번호를 받아보세요!</p>
+                    </div>
+                `;
+                countEl.textContent = '0조합';
+                lucide.createIcons();
+                return;
+            }
+
+            countEl.textContent = `${generatedGames.length}조합`;
+            timeEl.textContent = `최근 생성: ${new Date().toLocaleTimeString('ko-KR')}`;
+
+            let html = '';
+            generatedGames.forEach((game, idx) => {
+                const label = String.fromCharCode(65 + (idx % 5));
+                html += `
+                    <div class="bg-slate-800/70 border border-slate-700/80 p-3 sm:p-3.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-3 pop-in shadow-md">
+                        <div class="flex items-center space-x-2.5 sm:space-x-3 w-full sm:w-auto justify-between sm:justify-start">
+                            <span class="w-7 h-7 rounded-lg bg-indigo-950 border border-indigo-700/60 text-indigo-300 font-black text-xs flex items-center justify-center">
+                                ${label}
+                            </span>
+                            <div class="flex items-center space-x-1 sm:space-x-1.5">
+                                ${game.numbers.map(n => getBallHtml(n)).join('')}
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between w-full sm:w-auto space-x-3 text-xs text-slate-400 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-700/50">
+                            <div class="flex space-x-2 text-[11px]">
+                                <span>합: <b class="text-slate-200">${game.sum}</b></span>
+                                <span>홀짝: <b class="text-slate-200">${game.oddEven}</b></span>
+                            </div>
+                            <button onclick="copySingleGame(${JSON.stringify(game.numbers)})" class="text-slate-400 hover:text-white p-1" title="이 게임 복사">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function getBallHtml(number, sizeClass = '') {
+            let colorClass = 'ball-range-1';
+            if (number >= 11 && number <= 20) colorClass = 'ball-range-2';
+            else if (number >= 21 && number <= 30) colorClass = 'ball-range-3';
+            else if (number >= 31 && number <= 40) colorClass = 'ball-range-4';
+            else if (number >= 41 && number <= 45) colorClass = 'ball-range-5';
+
+            return `<span class="lotto-ball ${colorClass} ${sizeClass}">${number}</span>`;
+        }
+
+        // ----------------------------------------------------
+        // 9. 번호판 선택기
+        // ----------------------------------------------------
+        function buildNumberPicker() {
+            const grid = document.getElementById('balls-selection-grid');
+            let html = '';
+            for (let i = 1; i <= 45; i++) {
+                html += `
+                    <button id="pick-btn-${i}" 
+                        onclick="toggleBallState(${i}, 'fixed')" 
+                        oncontextmenu="event.preventDefault(); toggleBallState(${i}, 'excluded')"
+                        class="h-8 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all flex items-center justify-center">
+                        ${i}
+                    </button>
+                `;
+            }
+            grid.innerHTML = html;
+        }
+
+        function toggleNumberPicker() {
+            const container = document.getElementById('number-picker-container');
+            container.classList.toggle('hidden');
+        }
+
+        function toggleBallState(number, preferType) {
+            const btn = document.getElementById(`pick-btn-${number}`);
+
+            if (fixedNumbers.has(number)) {
+                fixedNumbers.delete(number);
+                if (preferType === 'excluded') excludedNumbers.add(number);
+            } else if (excludedNumbers.has(number)) {
+                excludedNumbers.delete(number);
+            } else {
+                if (preferType === 'fixed') {
+                    if (fixedNumbers.size >= 5) {
+                        alert('고정수는 최대 5개까지만 지정할 수 있습니다.');
+                        return;
+                    }
+                    fixedNumbers.add(number);
+                } else {
+                    if (excludedNumbers.size >= 35) {
+                        alert('제외수가 너무 많으면 게임 생성이 불가능합니다.');
+                        return;
+                    }
+                    excludedNumbers.add(number);
+                }
+            }
+
+            if (fixedNumbers.has(number)) {
+                btn.className = "h-8 rounded-lg text-xs font-bold bg-emerald-600 text-white border border-emerald-400 shadow-sm flex items-center justify-center";
+            } else if (excludedNumbers.has(number)) {
+                btn.className = "h-8 rounded-lg text-xs font-bold bg-rose-600 text-white border border-rose-400 line-through opacity-70 flex items-center justify-center";
+            } else {
+                btn.className = "h-8 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all flex items-center justify-center";
+            }
+
+            updatePreviewBadges();
+        }
+
+        function resetNumberSelections() {
+            fixedNumbers.clear();
+            excludedNumbers.clear();
+            for (let i = 1; i <= 45; i++) {
+                const btn = document.getElementById(`pick-btn-${i}`);
+                if (btn) btn.className = "h-8 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all flex items-center justify-center";
+            }
+            updatePreviewBadges();
+        }
+
+        function updatePreviewBadges() {
+            const fixedEl = document.getElementById('fixed-numbers-preview');
+            const exclEl = document.getElementById('excluded-numbers-preview');
+
+            if (fixedNumbers.size > 0) {
+                fixedEl.innerHTML = Array.from(fixedNumbers).sort((a,b)=>a-b).map(n => `<span class="inline-block bg-emerald-950 text-emerald-300 px-1.5 py-0.2 rounded mr-1 font-bold">${n}</span>`).join('');
+            } else {
+                fixedEl.innerHTML = '<span class="text-slate-500 italic text-[11px]">선택 없음</span>';
+            }
+
+            if (excludedNumbers.size > 0) {
+                exclEl.innerHTML = Array.from(excludedNumbers).sort((a,b)=>a-b).map(n => `<span class="inline-block bg-rose-950 text-rose-300 px-1.5 py-0.2 rounded mr-1 font-bold">${n}</span>`).join('');
+            } else {
+                exclEl.innerHTML = '<span class="text-slate-500 italic text-[11px]">선택 없음</span>';
+            }
+        }
+
+        // ----------------------------------------------------
+        // 10. 백테스트 시뮬레이션
+        // ----------------------------------------------------
+        function runBacktest() {
+            if (lottoHistory.length < 5) {
+                alert('백테스트를 위해서는 최소 5회차 이상의 데이터가 필요합니다.');
+                return;
+            }
+
+            const resultContainer = document.getElementById('backtest-result');
+            resultContainer.classList.remove('hidden');
+            resultContainer.innerHTML = '<span class="text-slate-400 animate-pulse">양자 몬테카를로 역추적 시뮬레이션 계산 중...</span>';
+
+            setTimeout(() => {
+                const roundsToTest = lottoHistory.slice(0, 20);
+                let matches3 = 0, matches4 = 0, matches5 = 0, matches5Bonus = 0, matches6 = 0;
+
+                const strategy = document.querySelector('input[name="strategy"]:checked').value;
+                const weights = getWeightedPool(strategy);
+
+                roundsToTest.forEach(pastRound => {
+                    for (let k = 0; k < 5; k++) {
+                        const sim = sampleFromWeights(weights, 6);
+                        const matchCount = sim.filter(n => pastRound.numbers.includes(n)).length;
+                        const hasBonus = pastRound.bonus && sim.includes(pastRound.bonus);
+
+                        if (matchCount === 6) matches6++;
+                        else if (matchCount === 5 && hasBonus) matches5Bonus++;
+                        else if (matchCount === 5) matches5++;
+                        else if (matchCount === 4) matches4++;
+                        else if (matchCount === 3) matches3++;
+                    }
+                });
+
+                resultContainer.innerHTML = `
+                    <div class="font-bold text-amber-300 mb-1 flex items-center justify-between">
+                        <span>최근 ${roundsToTest.length}개 회차 (총 ${roundsToTest.length * 5}회 가상구매) 결과:</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
+                        <div>🎯 1등 (6개 일치): <span class="font-bold text-yellow-400">${matches6}건</span></div>
+                        <div>🥈 2등 (5개+보너스): <span class="font-bold text-cyan-400">${matches5Bonus}건</span></div>
+                        <div>🥉 3등 (5개 일치): <span class="font-bold text-indigo-400">${matches5}건</span></div>
+                        <div>💎 4등 (4개 일치): <span class="font-bold text-emerald-400">${matches4}건</span></div>
+                        <div>⭐ 5등 (3개 일치): <span class="font-bold text-slate-200">${matches3}건</span></div>
+                    </div>
+                `;
+            }, 300);
+        }
+
+        // ----------------------------------------------------
+        // 11. 데이터 관리 모달
+        // ----------------------------------------------------
+        function openDataModal() {
+            document.getElementById('data-modal').classList.remove('hidden');
+            renderRoundsTablePreview();
+        }
+
+        function closeDataModal() {
+            document.getElementById('data-modal').classList.add('hidden');
+        }
+
+        function renderRoundsTablePreview() {
+            const container = document.getElementById('rounds-table-preview');
+            const countEl = document.getElementById('modal-round-count');
+            countEl.textContent = `${lottoHistory.length}개 회차 등록됨`;
+
+            if (lottoHistory.length === 0) {
+                container.innerHTML = '<div class="text-slate-500 text-center py-4">등록된 회차가 없습니다.</div>';
+                return;
+            }
+
+            const sorted = [...lottoHistory].sort((a,b)=>b.round - a.round).slice(0, 100);
+            container.innerHTML = sorted.map(item => `
+                <div class="py-1.5 flex items-center justify-between">
+                    <div>
+                        <span class="font-bold text-white text-xs">${item.round}회</span>
+                        <span class="text-[10px] text-slate-500 ml-1">(${item.date || '날짜 미상'})</span>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                        ${item.numbers.map(n => `<span class="text-[10px] font-bold text-slate-300 bg-slate-800 px-1 py-0.2 rounded">${n}</span>`).join('')}
+                        ${item.bonus ? `<span class="text-[10px] text-amber-400 font-bold ml-1">+${item.bonus}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                    const parsedRounds = [];
+
+                    json.forEach(row => {
+                        if (!Array.isArray(row)) return;
+                        const numbers = row
+                            .map(v => parseInt(v))
+                            .filter(v => !isNaN(v) && v >= 1 && v <= 45);
+
+                        let roundCandidate = null;
+                        for (let col of row) {
+                            const val = parseInt(col);
+                            if (!isNaN(val) && val >= 1 && val <= 3000 && !numbers.slice(0, 6).includes(val)) {
+                                roundCandidate = val;
+                                break;
+                            }
+                        }
+
+                        if (numbers.length >= 6) {
+                            const main6 = numbers.slice(0, 6).sort((a,b)=>a-b);
+                            const bonus = numbers[6] || null;
+                            parsedRounds.push({
+                                round: roundCandidate || (lottoHistory.length + parsedRounds.length + 1),
+                                numbers: main6,
+                                bonus: bonus,
+                                date: new Date().toISOString().split('T')[0]
+                            });
+                        }
+                    });
+
+                    if (parsedRounds.length > 0) {
+                        lottoHistory = parsedRounds;
+                        saveDataToStorage();
+                        renderRoundsTablePreview();
+                        alert(`총 ${parsedRounds.length}개 회차 데이터가 파일로부터 반영되었습니다!`);
+                    } else {
+                        alert('유효한 로또 데이터 행을 찾을 수 없습니다.');
+                    }
+                } catch (err) {
+                    alert('파일 오류: ' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // ----------------------------------------------------
+        // 12. 유틸리티 (복사, 초기화)
+        // ----------------------------------------------------
+        function clearResults() {
+            generatedGames = [];
+            renderResults();
+        }
+
+        function copySingleGame(numbers) {
+            const text = numbers.join(', ');
+            navigator.clipboard.writeText(text).then(() => {
+                alert(`조합 복사 완료: [${text}]`);
+            });
+        }
+
+        function copyAllResults() {
+            if (generatedGames.length === 0) {
+                alert('복사할 생성 번호가 없습니다.');
+                return;
+            }
+            const lines = generatedGames.map((g, i) => {
+                const label = String.fromCharCode(65 + (i % 5));
+                return `${label} 게임: ${g.numbers.join(', ')} (합: ${g.sum})`;
+            });
+            const fullText = `[Quantum Lotto AI 추천 번호]\n` + lines.join('\n');
+            navigator.clipboard.writeText(fullText).then(() => {
+                alert('모든 추천 조합이 클립보드에 복사되었습니다!');
+            });
+        }
+    </script>
+</body>
+</html>
